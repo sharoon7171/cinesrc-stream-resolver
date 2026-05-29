@@ -1,7 +1,7 @@
 {
   "name": "cinesrc-stream-resolver",
   "version": "1.0.0",
-  "description": "Resolve and play Cinesrc streams from TMDB titles.",
+  "description": "Reverse-engineering study of Cinesrc embed server actions, PoW challenges, and HLS delivery.",
   "type": "module",
   "scripts": {
     "start": "node server.mjs"
