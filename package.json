@@ -1,0 +1,13 @@
+{
+  "name": "cinesrc-stream-resolver",
+  "version": "1.0.0",
+  "description": "Resolve and play Cinesrc streams from TMDB titles.",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "dependencies": {
+    "canvas": "^3.2.3",
+    "jsdom": "^29.1.1"
+  }
+}

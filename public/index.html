@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cinesrc Stream Resolver</title>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js"></script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; background: #0b0d12; color: #e8eaef; }
+    main { max-width: 720px; margin: 0 auto; padding: 24px 16px 48px; }
+    h1 { font-size: 1.4rem; margin: 0 0 8px; }
+    p { color: #9aa3b2; margin: 0 0 20px; line-height: 1.5; }
+    form { display: grid; gap: 12px; grid-template-columns: repeat(2, 1fr); margin-bottom: 20px; }
+    label { display: flex; flex-direction: column; gap: 6px; font-size: 0.85rem; color: #b8c0cc; }
+    input, select, button { font: inherit; border-radius: 8px; border: 1px solid #2a3140; background: #151923; color: inherit; padding: 10px 12px; }
+    button:disabled { opacity: 0.6; cursor: wait; }
+    .panel { background: #121722; border: 1px solid #222938; border-radius: 12px; padding: 16px; margin-top: 16px; }
+    .status { font-size: 0.9rem; color: #9aa3b2; min-height: 1.2em; margin-bottom: 12px; }
+    .status.error { color: #f87171; }
+    video { width: 100%; background: #000; border-radius: 8px; }
+    .providers { display: flex; flex-wrap: wrap; gap: 8px; }
+    .providers button { width: auto; padding: 8px 12px; background: #1f2937; border: none; cursor: pointer; font-weight: 600; }
+    .providers button.active { background: #3b82f6; }
+    .tv-only { display: none; }
+    form[data-type="tv"] .tv-only { display: flex; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Cinesrc Stream Resolver</h1>
+    <p>Enter a TMDB title, then choose a provider to load the stream.</p>
+    <form id="form" data-type="movie">
+      <label>TMDB ID<input name="id" value="1084242" required inputmode="numeric"></label>
+      <label>Content type
+        <select name="type">
+          <option value="movie">Movie</option>
+          <option value="tv">TV series</option>
+        </select>
+      </label>
+      <label class="tv-only">Season<input name="season" placeholder="1" inputmode="numeric"></label>
+      <label class="tv-only">Episode<input name="episode" placeholder="1" inputmode="numeric"></label>
+    </form>
+    <div class="panel">
+      <div class="status" id="status">Loading providers...</div>
+      <div class="providers" id="providers"></div>
+      <video id="player" controls playsinline></video>
+    </div>
+  </main>
+  <script>
+    const form = document.getElementById('form')
+    const statusEl = document.getElementById('status')
+    const providersEl = document.getElementById('providers')
+    const player = document.getElementById('player')
+    let hls = null
+    let resolving = false
+
+    function params() {
+      const fd = new FormData(form)
+      const q = new URLSearchParams()
+      for (const [k, v] of fd.entries()) if (String(v).trim()) q.set(k, v)
+      return q
+    }
+
+    function syncFormType() {
+      form.dataset.type = form.type.value
+    }
+
+    function setStatus(text, isError = false) {
+      statusEl.textContent = text
+      statusEl.classList.toggle('error', isError)
+    }
+
+    function destroyPlayer() {
+      if (hls) {
+        hls.destroy()
+        hls = null
+      }
+      player.removeAttribute('src')
+      player.load()
+    }
+
+    function playStream(data, label) {
+      destroyPlayer()
+      const src = data.playUrl || data.url
+      if (!src) return
+      const isHls = data.source === 'HLS' || /\.m3u8(\?|$)/i.test(src) || /[?&]m3u8=/i.test(data.url || '')
+      if (isHls && window.Hls && Hls.isSupported()) {
+        hls = new Hls()
+        hls.loadSource(src)
+        hls.attachMedia(player)
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          player.play().catch(() => {})
+        })
+        hls.on(Hls.Events.ERROR, (_, info) => {
+          if (info.fatal) setStatus('Playback failed. Try another provider.', true)
+        })
+        return
+      }
+      if (isHls && player.canPlayType('application/vnd.apple.mpegurl')) {
+        player.src = src
+        player.play().catch(() => {})
+        return
+      }
+      player.src = src
+      player.play().catch(() => {})
+    }
+
+    async function loadProviders() {
+      providersEl.innerHTML = ''
+      setStatus('Loading providers...')
+      const q = params()
+      const res = await fetch('/api/providers?' + q)
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Could not load providers.')
+      const providers = data.providers || []
+      if (!providers.length) throw new Error('No providers are available for this title.')
+      for (const p of providers) {
+        const btn = document.createElement('button')
+        btn.type = 'button'
+        btn.textContent = p.name || p.id
+        btn.onclick = () => resolve(btn, p.id, p.name || p.id)
+        providersEl.appendChild(btn)
+      }
+      setStatus('Choose a provider to start playback.')
+    }
+
+    async function resolve(activeBtn, provider, label) {
+      if (resolving) return
+      resolving = true
+      for (const btn of providersEl.querySelectorAll('button')) {
+        btn.disabled = true
+        btn.classList.remove('active')
+      }
+      if (activeBtn) activeBtn.classList.add('active')
+      setStatus(`Resolving stream from ${label}...`)
+      destroyPlayer()
+      try {
+        const q = params()
+        q.set('provider', provider)
+        const res = await fetch('/api/resolve?' + q)
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error || 'Could not resolve stream.')
+        const source = data.source ? data.source.toUpperCase() : 'stream'
+        setStatus(`Playing ${label} (${source})`)
+        playStream(data, label)
+      } catch (err) {
+        setStatus(err.message, true)
+      } finally {
+        resolving = false
+        for (const btn of providersEl.querySelectorAll('button')) btn.disabled = false
+      }
+    }
+
+    form.type.addEventListener('change', syncFormType)
+    form.addEventListener('change', () => {
+      loadProviders().catch((err) => setStatus(err.message, true))
+    })
+
+    syncFormType()
+    loadProviders().catch((err) => setStatus(err.message, true))
+  </script>
+</body>
+</html>
