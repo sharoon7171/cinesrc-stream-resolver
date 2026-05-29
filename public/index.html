@@ -93,7 +93,9 @@
           player.play().catch(() => {})
         })
         hls.on(Hls.Events.ERROR, (_, info) => {
-          if (info.fatal) setStatus('Playback failed. Try another provider.', true)
+          if (!info.fatal) return
+          const detail = info.response?.code ? ` HTTP ${info.response.code}` : ''
+          setStatus(`Playback failed (${info.type}${detail}). Try another provider.`, true)
         })
         return
       }

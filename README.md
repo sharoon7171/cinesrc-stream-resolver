@@ -85,28 +85,36 @@ The lab proxy (`lib/stream-proxy.js`) exists to study playback mechanics:
 
 ## Module map
 
-| Path | What it reverse-engineers |
+| Path | Role |
 | --- | --- |
-| `lib/content-path.js` | Embed URL ↔ router state tree encoding |
-| `lib/constants.js` | Origin, user-agent, action IDs, token manifest URL |
-| `lib/challenge-window.js` | Embed DOM bootstrap, PoW hooks, session key capture |
-| `lib/challenge-engine.js` | Token assembly, decrypt orchestration, retry policy |
-| `lib/cinesrc-api.js` | Server-action POST contract and RSC parsing |
-| `lib/response-decrypt.js` | `r1` payload extraction and decryption |
-| `lib/stream-sources.js` | Source-type ordering from decoded stream object |
-| `lib/stream.js` | Full resolve chain from TMDB inputs to URLs |
-| `lib/stream-proxy.js` | HLS manifest rewrite and header injection (analysis aid) |
-| `server.mjs` | Local trace endpoints |
-| `public/index.html` | Manual verification UI (hls.js) |
+| `server.mjs` | HTTP entry: static UI, `/api/*`, lazy resolve import |
+| `lib/load-env.js` | Loads `.env` for local `CINESRC_PROXY` |
+| `lib/upstream-fetch.js` | Direct `fetch` first; `CINESRC_PROXY` on 403/407/429/451 or network error |
+| `lib/constants.js` | Origin, headers, action IDs, token manifest URL |
+| `lib/content-path.js` | Embed path ↔ `Next-Router-State-Tree` |
+| `lib/cinesrc-api.js` | Server-action POST, provider list, stream fetch |
+| `lib/challenge-window.js` | JSDOM embed, PoW worker, patched `fetch` |
+| `lib/challenge-engine.js` | Challenge token + in-window `fetch` for `getStream` |
+| `lib/response-decrypt.js` | `r1.*` extraction and decryption |
+| `lib/stream.js` | Resolve pipeline and playback URL assembly |
+| `lib/stream-sources.js` | HLS / MP4 / DASH source preference |
+| `lib/stream-proxy.js` | Playlist rewrite, segment proxy, HEAD support |
+| `lib/stage2-pow-worker.mjs` | Stage-2 hash worker (Node `worker_threads`) |
+| `assets/` | Captured challenge/runtime scripts (`050926-prod.js`, `donut.js`, `pow.wasm`) |
+| `public/index.html` | Lab UI (hls.js) |
+| `vercel.json` | Serverless: `NODE_OPTIONS`, 60s `maxDuration` |
 
 ## Run locally (analysis only)
 
 ```bash
+cp .env.example .env
 npm install
 npm start
 ```
 
-Listens on `http://127.0.0.1:8787` unless `PORT` is set. Requires **Node.js 18+** and a working **canvas** native build for the challenge window.
+Optional: set `CINESRC_PROXY` in `.env` for fallback when direct requests to cinesrc.st are blocked.
+
+Listens on `http://127.0.0.1:8787` unless `PORT` is set. Requires **Node.js 20+**, **canvas** (native), and **jsdom@26**.
 
 Use the root page or curl against the endpoints below to step through provider discovery → resolve → proxied playlist. Keep traffic low; stage 2 is rate-limited upstream.
 
@@ -129,8 +137,18 @@ Returns upstream `url`, lab `playUrl`, and `source` type.
 **Playlist / segment trace**
 
 ```
-GET /api/proxy?url={encoded}&referer={optional}&h_{header}={value}
+GET|HEAD /api/proxy?url={encoded}&referer={optional}&h_{header}={value}
 ```
+
+## Deploy (Vercel, manual)
+
+Git integration is optional; deploy from the project root:
+
+```bash
+vercel deploy --prod --scope sq-tech
+```
+
+Set `CINESRC_PROXY` in the Vercel project environment for fallback when direct egress is blocked. See `.vercel/README.txt` after `vercel link`.
 
 ### Example trace
 

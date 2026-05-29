@@ -1,0 +1,10 @@
+{
+  "env": {
+    "NODE_OPTIONS": "--experimental-require-module"
+  },
+  "functions": {
+    "server.mjs": {
+      "maxDuration": 60
+    }
+  }
+}

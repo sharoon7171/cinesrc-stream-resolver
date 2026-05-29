@@ -6,8 +6,12 @@
   "scripts": {
     "start": "node server.mjs"
   },
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "canvas": "^3.2.3",
-    "jsdom": "^29.1.1"
+    "jsdom": "26.1.0",
+    "undici": "^7.10.0"
   }
 }
