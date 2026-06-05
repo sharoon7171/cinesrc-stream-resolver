@@ -1,11 +1,19 @@
+import './lib/load-env.js'
 import http from 'node:http'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { buildContentPath, buildRouterStateTree } from './lib/content-path.js'
 import { getProviders } from './lib/cinesrc-api.js'
-import { resolveStream } from './lib/stream.js'
 import { proxyStreamResponse } from './lib/stream-proxy.js'
+
+let resolveStreamFn = null
+async function resolveStream(input, options) {
+  if (!resolveStreamFn) {
+    resolveStreamFn = (await import('./lib/stream.js')).resolveStream
+  }
+  return resolveStreamFn(input, options)
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const publicDir = path.join(__dirname, 'public')
@@ -13,7 +21,8 @@ const port = Number(process.env.PORT) || 8787
 
 function baseUrl(req) {
   const host = req.headers.host || `127.0.0.1:${port}`
-  return `http://${host}`
+  const proto = req.headers['x-forwarded-proto'] || 'http'
+  return `${proto}://${host}`
 }
 
 function sendJson(res, status, body) {
@@ -45,16 +54,16 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    if (req.method === 'GET' && req.url?.startsWith('/api/proxy')) {
+    if ((req.method === 'GET' || req.method === 'HEAD') && req.url?.startsWith('/api/proxy')) {
       const q = parseQuery(req.url)
       const target = q.url
       if (!target) return sendJson(res, 400, { error: 'Stream URL is required.' })
       const sourceHeaders = parseProxyHeaders(q)
-      const init = {}
+      const init = { method: req.method }
       if (req.headers.range) init.headers = { Range: req.headers.range }
       const proxied = await proxyStreamResponse(target, sourceHeaders, baseUrl(req), init)
       res.writeHead(proxied.status, proxied.headers)
-      res.end(proxied.body)
+      res.end(req.method === 'HEAD' ? undefined : proxied.body)
       return
     }
 
@@ -97,4 +106,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(port, () => {
   console.log(`Cinesrc Stream Resolver listening on http://127.0.0.1:${port}`)
+  if (process.env.CINESRC_PROXY) console.log('Proxy fallback configured (CINESRC_PROXY)')
 })
