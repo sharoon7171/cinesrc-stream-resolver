@@ -5,13 +5,13 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { JSDOM } from 'jsdom'
 import { Worker as NodeWorker } from 'node:worker_threads'
-import { CINESRC_HEADERS, ORIGIN } from './constants.js'
-import { upstreamFetch } from './upstream-fetch.js'
+import { SPOOF_HEADERS, TARGET } from '../target/origin.js'
+import { wireFetch } from '../wire/exfil.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const PROD_PATH = path.join(__dirname, '../assets/050926-prod.js')
-const DONUT_PATH = path.join(__dirname, '../assets/donut.js')
-const POW_WORKER = path.join(__dirname, 'stage2-pow-worker.mjs')
+const STAGE_ONE_SCRIPT = path.join(__dirname, '../payload/050926-prod.js')
+const STAGE_TWO_SCRIPT = path.join(__dirname, '../payload/donut.js')
+const HASH_GRIND_WORKER = path.join(__dirname, 'hash-grind.js')
 
 const BIND_OLD =
   'function(a,b,c){var d=b(a),e=b(a).slice();e.unshift(void 0),c(a,new(Function.bind.apply(d,e)))}'
@@ -43,7 +43,7 @@ function installWorkerEnv(window) {
     }
     postMessage(data) {
       if (this._done) return
-      const w = new NodeWorker(POW_WORKER, {
+      const w = new NodeWorker(HASH_GRIND_WORKER, {
         workerData: {
           publicSalt: data[0],
           target: data[1],
@@ -129,7 +129,7 @@ function installSessionKeyCapture(window) {
 }
 
 function installNavigator(window) {
-  Object.defineProperty(window.navigator, 'userAgent', { value: CINESRC_HEADERS['User-Agent'], configurable: true })
+  Object.defineProperty(window.navigator, 'userAgent', { value: SPOOF_HEADERS['User-Agent'], configurable: true })
   Object.defineProperty(window.navigator, 'platform', { value: 'Linux armv81', configurable: true })
   Object.defineProperty(window.navigator, 'language', { value: 'en-GB', configurable: true })
   Object.defineProperty(window.navigator, 'languages', { value: ['en-GB', 'en-US', 'en'], configurable: true })
@@ -155,25 +155,24 @@ function captureSetCookies(res, jar) {
   }
 }
 
-function installFetch(window, embedPath) {
+function installFetch(window, framePath) {
   const cookies = []
-  window.__cinesrcFetchCookies = cookies
   window.fetch = async (input, init = {}) => {
     let url = typeof input === 'string' ? input : input.url
-    if (url.startsWith('/')) url = `${ORIGIN}${url}`
-    const headers = new Headers(CINESRC_HEADERS)
+    if (url.startsWith('/')) url = `${TARGET}${url}`
+    const headers = new Headers(SPOOF_HEADERS)
     if (init.headers) {
       for (const [key, value] of new Headers(init.headers)) headers.set(key, value)
     }
-    if (!headers.has('Referer')) headers.set('Referer', `${ORIGIN}${embedPath}`)
+    if (!headers.has('Referer')) headers.set('Referer', `${TARGET}${framePath}`)
     if (cookies.length) headers.set('Cookie', cookies.join('; '))
-    const res = await upstreamFetch(url, { ...init, headers })
+    const res = await wireFetch(url, { ...init, headers })
     captureSetCookies(res, cookies)
     return res
   }
 }
 
-function findProdApi(window) {
+function findStageOneCore(window) {
   for (const value of Object.values(window)) {
     if (value && typeof value === 'object' && typeof value.gc === 'function' && typeof value.dr === 'function') {
       return value
@@ -182,32 +181,32 @@ function findProdApi(window) {
   return null
 }
 
-function waitForProdApi(window, timeoutMs = 15000) {
+function waitForStageOneCore(window, timeoutMs = 15000) {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('Challenge timed out.')), timeoutMs)
     window.addEventListener(
       '_cs',
       (ev) => {
         const key = ev.detail
-        const api = key ? window[key] : null
+        const core = key ? window[key] : null
         clearTimeout(timeout)
-        resolve(api || findProdApi(window))
+        resolve(core || findStageOneCore(window))
       },
       { once: true },
     )
   })
 }
 
-let cached = null
+let frameCache = null
 
-export async function getChallengeWindow(embedPath = '/embed/movie/0') {
-  if (cached?.embedPath === embedPath) return cached
-  if (cached) resetChallengeWindow()
+export async function spawnFrame(framePath = '/embed/movie/0') {
+  if (frameCache?.framePath === framePath) return frameCache
+  if (frameCache) dropFrame()
 
   const dom = new JSDOM(
     '<!DOCTYPE html><html><head></head><body><canvas id="c" width="256" height="128"></canvas></body></html>',
     {
-      url: `${ORIGIN}${embedPath}`,
+      url: `${TARGET}${framePath}`,
       runScripts: 'dangerously',
       pretendToBeVisual: true,
     },
@@ -219,25 +218,25 @@ export async function getChallengeWindow(embedPath = '/embed/movie/0') {
   Object.defineProperty(window, 'crypto', { value: crypto.webcrypto, configurable: true })
   installSessionKeyCapture(window)
   installNavigator(window)
-  installFetch(window, embedPath)
+  installFetch(window, framePath)
   installWorkerEnv(window)
 
-  window.eval(patchVmSource(fs.readFileSync(DONUT_PATH, 'utf8')))
+  window.eval(patchVmSource(fs.readFileSync(STAGE_TWO_SCRIPT, 'utf8')))
   if (!window.__ss2_challenge?.gc) {
     throw new Error('Stage 2 challenge is unavailable.')
   }
 
-  const prodReady = waitForProdApi(window)
-  window.eval(patchVmSource(fs.readFileSync(PROD_PATH, 'utf8')))
-  const prodApi = (await prodReady) || findProdApi(window)
-  if (!prodApi?.gc || !prodApi?.dr) {
+  const stageOneReady = waitForStageOneCore(window)
+  window.eval(patchVmSource(fs.readFileSync(STAGE_ONE_SCRIPT, 'utf8')))
+  const stageOneCore = (await stageOneReady) || findStageOneCore(window)
+  if (!stageOneCore?.gc || !stageOneCore?.dr) {
     throw new Error('Stage 1 challenge is unavailable.')
   }
 
-  cached = { window, prodApi, embedPath }
-  return cached
+  frameCache = { window, stageOneCore, framePath }
+  return frameCache
 }
 
-export function resetChallengeWindow() {
-  cached = null
+export function dropFrame() {
+  frameCache = null
 }

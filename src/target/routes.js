@@ -1,11 +1,11 @@
-export function buildContentPath({ id, type, season, episode }) {
+export function buildFramePath({ id, type, season, episode }) {
   if (type === 'tv') {
     return `/embed/tv/${id}/${season ?? 1}/${episode ?? 1}`
   }
   return `/embed/movie/${id}`
 }
 
-export function buildRouterStateTree({ id, type, season, episode }) {
+export function buildRouteTree({ id, type, season, episode }) {
   if (type === 'tv') {
     return encodeURIComponent(
       JSON.stringify([
@@ -85,6 +85,6 @@ export function buildRouterStateTree({ id, type, season, episode }) {
   )
 }
 
-export function undefinedArg(value) {
+export function nullToken(value) {
   return value == null ? '$undefined' : value
 }

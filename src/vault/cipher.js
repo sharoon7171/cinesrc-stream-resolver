@@ -1,6 +1,6 @@
 import crypto from 'node:crypto'
 
-export function extractR1Payload(raw) {
+export function peelEnvelope(raw) {
   const errorLine = raw.split('\n').find((line) => line.startsWith('1:E'))
   if (errorLine) return { error: 'invalid_challenge', digest: errorLine.slice(3) }
 
@@ -18,19 +18,19 @@ export function extractR1Payload(raw) {
   return null
 }
 
-export function parseEncryptedLine(raw) {
-  const payload = extractR1Payload(raw)
-  if (!payload) return null
-  if (payload.error) return payload
-  const dot = payload.indexOf('.', 3)
+export function parseEnvelope(raw) {
+  const envelope = peelEnvelope(raw)
+  if (!envelope) return null
+  if (envelope.error) return envelope
+  const dot = envelope.indexOf('.', 3)
   if (dot < 0) return null
-  const ivB64 = payload.slice(3, dot)
-  const ctB64 = payload.slice(dot + 1)
+  const ivB64 = envelope.slice(3, dot)
+  const ctB64 = envelope.slice(dot + 1)
   if (!ivB64 || !ctB64) return null
   return { ivB64, ctB64 }
 }
 
-export function decryptR1Payload({ ivB64, ctB64 }, aesKey) {
+export function openEnvelope({ ivB64, ctB64 }, aesKey) {
   const key = Buffer.isBuffer(aesKey) ? aesKey : Buffer.from(aesKey)
   const iv = Buffer.from(ivB64, 'base64')
   const buf = Buffer.from(ctB64, 'base64')

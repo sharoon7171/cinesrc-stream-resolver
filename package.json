@@ -1,17 +1,15 @@
 {
   "name": "cinesrc-stream-resolver",
   "version": "1.0.0",
-  "description": "Reverse-engineering study of Cinesrc embed server actions, PoW challenges, and HLS delivery.",
   "type": "module",
   "scripts": {
-    "start": "node server.mjs"
+    "start": "node src/gateway/server.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
     "canvas": "^3.2.3",
-    "jsdom": "26.1.0",
-    "undici": "^7.10.0"
+    "jsdom": "26.1.0"
   }
 }
