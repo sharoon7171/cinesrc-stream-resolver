@@ -2,472 +2,108 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="Resolve HLS stream URLs from cinesrc.st by TMDB movie or TV ID. Play in the browser or export links for VLC and MPV.">
   <title>Cinesrc Stream Resolver</title>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
-  <style>
-    :root {
-      color-scheme: dark;
-      font-family: Inter, system-ui, sans-serif;
-      --bg: #0a0c10;
-      --surface: #11151c;
-      --border: #1e2733;
-      --text: #eef2f7;
-      --muted: #8b9cb0;
-      --accent: #5b9cf5;
-      --accent-dim: #2a4160;
-    }
-    * { box-sizing: border-box; margin: 0; }
-    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
-    .app {
-      display: grid;
-      grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
-      height: 100dvh;
-      min-height: 0;
-    }
-    .side {
-      display: flex;
-      flex-direction: column;
-      gap: 16px;
-      padding: 20px 16px;
-      background: var(--surface);
-      border-right: 1px solid var(--border);
-      min-height: 0;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-    }
-    .brand { flex-shrink: 0; }
-    .brand h1 { font-size: 16px; font-weight: 600; letter-spacing: -.02em; }
-    .brand p { margin-top: 6px; font-size: 12px; line-height: 1.5; color: var(--muted); }
-    .brand a { color: var(--accent); text-decoration: none; }
-    .brand a:hover { text-decoration: underline; }
-    #form {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      flex-shrink: 0;
-    }
-    .field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-    .field label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-    .row { display: flex; gap: 8px; min-width: 0; }
-    input, select, button {
-      font: inherit;
-      color: inherit;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-size: 14px;
-      line-height: 1.25;
-      min-height: 38px;
-    }
-    input { width: 100%; min-width: 0; }
-    input:focus, select:focus { outline: 2px solid var(--accent-dim); border-color: var(--accent); }
-    select { width: 100%; cursor: pointer; }
-    .tv-fields { display: none; }
-    .tv-fields.show { display: flex; flex-direction: column; gap: 6px; }
-    .tv-fields input { flex: 1; text-align: center; min-width: 0; }
-    button.primary {
-      width: 100%;
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #061018;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    button.primary:hover:not(:disabled) { filter: brightness(1.08); }
-    button.primary:disabled { opacity: .55; cursor: default; }
-    .guide { font-size: 12px; line-height: 1.55; color: var(--muted); flex-shrink: 0; }
-    .guide a { color: var(--accent); text-decoration: none; }
-    .guide a:hover { text-decoration: underline; }
-    .guide strong { color: var(--text); font-weight: 600; display: block; margin-top: 10px; font-size: 11px; text-transform: none; letter-spacing: 0; }
-    .guide strong:first-child { margin-top: 0; }
-    .guide code { font-size: 11px; color: #b8c8da; }
-    .path-block { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; min-width: 0; }
-    .path-block label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-    .path {
-      font-size: 11px;
-      color: var(--muted);
-      padding: 8px 10px;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-family: ui-monospace, monospace;
-      word-break: break-all;
-    }
-    .link-box { min-height: 0; }
-    .link-box[hidden] { display: none; }
-    .link-row {
-      display: flex;
-      gap: 8px;
-      align-items: stretch;
-      min-width: 0;
-    }
-    .link-row a {
-      flex: 1;
-      min-width: 0;
-      font-size: 11px;
-      font-family: ui-monospace, monospace;
-      color: var(--accent);
-      text-decoration: none;
-      padding: 8px 10px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .link-row a:hover { text-decoration: underline; }
-    .link-row button {
-      flex-shrink: 0;
-      cursor: pointer;
-      font-size: 12px;
-      padding: 8px 12px;
-    }
-    .main {
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-      min-width: 0;
-      padding: 16px;
-      gap: 12px;
-      overflow: hidden;
-    }
-    .stage {
-      flex: 1;
-      min-height: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: #000;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      overflow: hidden;
-      position: relative;
-    }
-    video { width: 100%; height: 100%; object-fit: contain; background: #000; }
-    .empty {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: var(--muted);
-      font-size: 14px;
-      pointer-events: none;
-      text-align: center;
-      padding: 16px;
-    }
-    .empty.hide { display: none; }
-    .providers { min-height: 0; }
-    .providers[hidden] { display: none; }
-    .providers-label {
-      font-size: 11px;
-      font-weight: 500;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: .06em;
-      margin-bottom: 8px;
-    }
-    .chips { display: flex; flex-wrap: wrap; gap: 8px; max-height: 88px; overflow-y: auto; overscroll-behavior: contain; }
-    .chip {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 7px 12px;
-      font-size: 12px;
-      cursor: pointer;
-      transition: border-color .15s, background .15s;
-    }
-    .chip:hover { border-color: var(--accent); }
-    .chip.on { border-color: var(--accent); background: var(--accent-dim); color: var(--text); }
-    @media (max-width: 900px) {
-      .app { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
-      .side {
-        border-right: none;
-        border-bottom: 1px solid var(--border);
-        padding: 14px 16px;
-        gap: 12px;
-        max-height: 46dvh;
-      }
-      .brand p { font-size: 11px; line-height: 1.45; }
-      #form {
-        display: grid;
-        grid-template-columns: minmax(110px, 130px) minmax(0, 1fr);
-        grid-template-areas:
-          "type id"
-          "tv tv"
-          "play play";
-        gap: 10px;
-        align-items: end;
-      }
-      #form .field:nth-child(1) { grid-area: type; }
-      #form .field:nth-child(2) { grid-area: id; }
-      #form .tv-fields { grid-area: tv; }
-      #form .primary { grid-area: play; }
-      .guide { display: none; }
-      .main { padding: 12px; gap: 10px; }
-      .stage { min-height: 180px; }
-    }
-    @media (max-width: 520px) {
-      .side { max-height: 42dvh; }
-      #form { grid-template-columns: 1fr; grid-template-areas: "type" "id" "tv" "play"; }
-      .link-row { flex-direction: column; }
-      .link-row a { white-space: normal; word-break: break-all; }
-      .link-row button { width: 100%; }
-    }
-  </style>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <div class="app">
-    <aside class="side">
-      <div class="brand">
-        <h1>Cinesrc Stream Resolver</h1>
-        <p>Turns a TMDB ID into a playable stream from <a href="https://cinesrc.st/" target="_blank" rel="noopener">cinesrc.st</a>. It opens the embed route, runs the site challenge, probes providers, and loads the first link that works.</p>
-      </div>
+    <header class="top">
+      <h1 class="top__title">Cinesrc Stream Resolver</h1>
+      <p class="top__desc">Resolve HLS stream URLs from <a href="https://cinesrc.st" target="_blank" rel="noopener noreferrer">cinesrc.st</a> by TMDB movie or TV ID. The first working server auto-plays — click any server to switch or resolve on demand.</p>
+    </header>
+
+    <section class="card">
       <form id="form">
-        <div class="field">
-          <label for="type">Type</label>
-          <select id="type"><option value="movie">Movie</option><option value="tv">TV episode</option></select>
-        </div>
-        <div class="field">
-          <label for="contentId">TMDB ID</label>
-          <input id="contentId" value="1084242" placeholder="e.g. 1084242" inputmode="numeric">
-        </div>
-        <div class="field tv-fields" id="tvFields">
-          <label>Season / Episode</label>
-          <div class="row">
-            <input id="season" value="1" placeholder="S" inputmode="numeric">
-            <input id="episode" value="1" placeholder="E" inputmode="numeric">
+        <div class="resolve__row resolve__row--form">
+          <label class="resolve__field">
+            <span class="resolve__label">Type</span>
+            <select id="type">
+              <option value="movie">Movie</option>
+              <option value="tv">TV</option>
+            </select>
+          </label>
+          <label class="resolve__field resolve__field--grow">
+            <span class="resolve__label" id="id-label">Movie ID</span>
+            <input id="id" type="text" inputmode="numeric" required placeholder="1084242" value="1084242">
+          </label>
+          <div class="resolve__tv" id="tv-fields" hidden>
+            <label class="resolve__field">
+              <span class="resolve__label">Season</span>
+              <input id="season" type="text" inputmode="numeric" placeholder="1">
+            </label>
+            <label class="resolve__field">
+              <span class="resolve__label">Episode</span>
+              <input id="episode" type="text" inputmode="numeric" placeholder="1">
+            </label>
           </div>
+          <button type="submit">Resolve</button>
         </div>
-        <button type="submit" class="primary" id="play">Play</button>
+        <p class="resolve__hint" id="hint-movie">Movie — TMDB ID only, e.g. <code>1084242</code></p>
+        <p class="resolve__hint" id="hint-tv" hidden>TV — TMDB ID plus season and episode, e.g. <code>1396</code> · S1 · E1</p>
       </form>
-      <div class="path-block">
-        <label for="pathHint">Cinesrc embed path</label>
-        <div class="path" id="pathHint" role="textbox" aria-readonly="true">/embed/movie/1084242</div>
+      <p id="err" class="msg msg--err" hidden></p>
+      <ul id="timing" class="timing" hidden>
+        <li>
+          <span class="timing__label">Resolve</span>
+          <span id="t-resolve" class="timing__val">—</span>
+        </li>
+        <li>
+          <span class="timing__label">Playback</span>
+          <span id="t-play" class="timing__val">—</span>
+        </li>
+      </ul>
+    </section>
+
+    <section id="out" class="stack" hidden>
+      <div class="card">
+        <h2 id="title" class="stream-title">Stream</h2>
+        <div class="player"><video id="video" controls playsinline></video></div>
       </div>
-      <div class="guide">
-        <strong>Finding IDs</strong> — search on <a href="https://www.themoviedb.org/" target="_blank" rel="noopener">themoviedb.org</a>. The number in the URL is what you enter (<code>/movie/1084242</code> → 1084242, <code>/tv/1396</code> → 1396).
-        <strong>What happens</strong> — the resolver loads the Cinesrc embed, passes the PoW challenge, lists providers, and probes them until one returns a stream.
-        <strong>Switching providers</strong> — after Play, pick another provider under the player.
+
+      <div class="card">
+        <h3 class="section-title">Servers</h3>
+        <div id="servers" class="servers"></div>
       </div>
-    </aside>
-    <div class="main">
-      <div class="stage">
-        <video id="video" controls></video>
-        <div class="empty" id="empty">TMDB ID → cinesrc.st embed → HLS playback</div>
+
+      <div class="card">
+        <h3 class="section-title">Export</h3>
+        <ul class="exports">
+          <li>
+            <div class="export__meta">
+              <span class="export__name">Direct URL</span>
+              <span class="export__hint">Upstream M3U8 URL</span>
+            </div>
+            <div class="export__row">
+              <input id="direct" readonly>
+              <button type="button" data-copy="direct">Copy</button>
+            </div>
+          </li>
+          <li>
+            <div class="export__meta">
+              <span class="export__name">VLC</span>
+              <span id="vlc-hint" class="export__hint">VLC command</span>
+            </div>
+            <div class="export__row">
+              <input id="vlc" readonly>
+              <button type="button" data-copy="vlc">Copy</button>
+            </div>
+          </li>
+          <li>
+            <div class="export__meta">
+              <span class="export__name">MPV</span>
+              <span id="mpv-hint" class="export__hint">MPV command</span>
+            </div>
+            <div class="export__row">
+              <input id="mpv" readonly>
+              <button type="button" data-copy="mpv">Copy</button>
+            </div>
+          </li>
+        </ul>
       </div>
-      <section class="link-box" id="linkBox" hidden>
-        <div class="providers-label">Playable link</div>
-        <div class="link-row">
-          <a id="playLink" href="#" target="_blank" rel="noopener"></a>
-          <button type="button" id="copyLink">Copy</button>
-        </div>
-      </section>
-      <section class="providers" id="providers" hidden>
-        <div class="providers-label">Providers</div>
-        <div class="chips" id="chips"></div>
-      </section>
-    </div>
+    </section>
   </div>
-  <script>
-    const $ = (id) => document.getElementById(id)
-    const video = $('video')
-    const btn = $('play')
-    const typeSelect = $('type')
-    const contentId = $('contentId')
-    const seasonInput = $('season')
-    const episodeInput = $('episode')
-    const tvFields = $('tvFields')
-    const pathHint = $('pathHint')
-    const providersEl = $('providers')
-    const chipsEl = $('chips')
-    const emptyEl = $('empty')
-    const linkBox = $('linkBox')
-    const playLink = $('playLink')
-    const copyLink = $('copyLink')
-    const presets = { movie: { id: '1084242' }, tv: { id: '1396', season: '1', episode: '1' } }
-
-    let hls, live, session = null, done = false
-    const chipMap = new Map()
-
-    const pathLabel = () => {
-      const id = contentId.value.trim()
-      return typeSelect.value === 'tv'
-        ? `/embed/tv/${id}/${seasonInput.value.trim() || 1}/${episodeInput.value.trim() || 1}`
-        : `/embed/movie/${id}`
-    }
-
-    const streamQuery = () => {
-      const qs = new URLSearchParams({ id: contentId.value.trim(), type: typeSelect.value })
-      if (typeSelect.value === 'tv') {
-        qs.set('season', seasonInput.value.trim() || '1')
-        qs.set('episode', episodeInput.value.trim() || '1')
-      }
-      return qs
-    }
-
-    const setLoading = (on) => {
-      btn.disabled = on
-      btn.textContent = on ? 'Loading…' : 'Play'
-    }
-
-    const showEmpty = (text) => {
-      emptyEl.textContent = text
-      emptyEl.classList.remove('hide')
-    }
-
-    const ensureSession = () => {
-      if (!session) session = { providers: [], cache: new Map(), activeIndex: 0 }
-      return session
-    }
-
-    const syncType = () => {
-      const tv = typeSelect.value === 'tv'
-      tvFields.classList.toggle('show', tv)
-      const p = presets[typeSelect.value]
-      contentId.value = p.id
-      if (tv) { seasonInput.value = p.season; episodeInput.value = p.episode }
-      pathHint.textContent = pathLabel()
-      resetSession(false)
-    }
-
-    const resetSession = (clearVideo = true) => {
-      done = false
-      if (live) { live.close(); live = null }
-      session = null
-      chipMap.clear()
-      chipsEl.replaceChildren()
-      providersEl.hidden = true
-      linkBox.hidden = true
-      playLink.href = '#'
-      playLink.textContent = ''
-      if (clearVideo) {
-        if (hls) { hls.destroy(); hls = null }
-        video.removeAttribute('src')
-        video.load()
-        emptyEl.classList.remove('hide')
-      }
-    }
-
-    const setPlayableLink = (href) => {
-      playLink.href = href
-      playLink.textContent = href
-      linkBox.hidden = false
-    }
-
-    const play = (data) => {
-      const src = data.playUrl || data.url
-      if (!src) return
-      const href = src.startsWith('http') ? src : `${location.origin}${src}`
-      emptyEl.classList.add('hide')
-      setPlayableLink(href)
-      if (hls) { hls.destroy(); hls = null }
-      const isHls = data.source === 'HLS' || /\.m3u8(\?|$)/i.test(href) || /[?&]m3u8=/i.test(data.url || href)
-      if (isHls && window.Hls?.isSupported()) {
-        hls = new Hls()
-        hls.loadSource(href)
-        hls.attachMedia(video)
-        return
-      }
-      video.src = href
-    }
-
-    const markActive = (index) => {
-      chipMap.forEach((chip, i) => chip.classList.toggle('on', i === index))
-    }
-
-    const addChip = (provider, index) => {
-      if (chipMap.has(index)) return chipMap.get(index)
-      const chip = document.createElement('button')
-      chip.type = 'button'
-      chip.className = 'chip'
-      chip.textContent = provider.name || provider.id
-      chip.onclick = () => {
-        const cached = session?.cache.get(provider.id)
-        if (!cached || session.activeIndex === index) return
-        session.activeIndex = index
-        markActive(index)
-        play(cached)
-      }
-      chipsEl.appendChild(chip)
-      chipMap.set(index, chip)
-      providersEl.hidden = false
-      return chip
-    }
-
-    const storeResult = (data) => {
-      const id = data.id || data.provider
-      if (!id || !data.playUrl) return
-      ensureSession().cache.set(id, {
-        playUrl: data.playUrl,
-        url: data.url,
-        source: data.source,
-      })
-      if (session.providers.some((p) => p.id === id)) return
-      const index = session.providers.length
-      session.providers.push({
-        id,
-        name: data.name || data.selectedProvider?.name || id,
-        rank: data.rank,
-      })
-      addChip({ id, name: data.name || data.selectedProvider?.name || id }, index)
-    }
-
-    const onReady = (data) => {
-      storeResult(data)
-      if (data.selectedProvider?.index != null) ensureSession().activeIndex = data.selectedProvider.index
-      markActive(session.activeIndex)
-      play(data)
-      setLoading(false)
-    }
-
-    copyLink.onclick = () => {
-      if (!playLink.href || playLink.href === '#') return
-      navigator.clipboard.writeText(playLink.href).catch(() => {})
-    }
-
-    $('form').onsubmit = (e) => {
-      e.preventDefault()
-      resetSession()
-      setLoading(true)
-      showEmpty('Resolving stream…')
-      live = new EventSource('/api/stream/live?' + streamQuery())
-      live.addEventListener('found', (ev) => storeResult(JSON.parse(ev.data)))
-      live.addEventListener('ready', (ev) => onReady(JSON.parse(ev.data)))
-      live.addEventListener('done', () => {
-        done = true
-        setLoading(false)
-        live?.close()
-        live = null
-      })
-      live.addEventListener('fail', (ev) => {
-        try {
-          const { error } = JSON.parse(ev.data)
-          showEmpty(error || 'Could not resolve stream')
-        } catch {
-          showEmpty('Could not resolve stream')
-        }
-        setLoading(false)
-        live?.close()
-        live = null
-      })
-      live.onerror = () => {
-        if (done) return
-        showEmpty('Connection failed — run npm start')
-        setLoading(false)
-        live?.close()
-        live = null
-      }
-    }
-
-    typeSelect.onchange = syncType
-    contentId.oninput = seasonInput.oninput = episodeInput.oninput = () => {
-      pathHint.textContent = pathLabel()
-    }
-    syncType()
-  </script>
+  <script type="module" src="/player.js"></script>
 </body>
 </html>

@@ -1,15 +1,19 @@
 {
   "name": "cinesrc-stream-resolver",
-  "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node src/gateway/server.js"
+    "start": "node src/server.js"
   },
   "engines": {
     "node": ">=20"
   },
   "dependencies": {
+    "@happy-dom/node-canvas-adapter": "^20.10.6",
     "canvas": "^3.2.3",
-    "jsdom": "26.1.0"
+    "happy-dom": "^20.10.6",
+    "hls.js": "^1.6.16"
+  },
+  "allowScripts": {
+    "canvas@3.2.3": true
   }
 }
